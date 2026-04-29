@@ -409,14 +409,27 @@ redis-cli -a votingpass123 ping
 
 Test the system under load while monitoring traces:
 
+#loadtest.sh script
 ```bash
+#!/bin/bash
+
 # Submit multiple votes with trace headers
-for i in {1..100}; do
-  curl -X POST http://localhost/vote/prod_001 \
+users=("jira" "gitlab" "jenkins" "confluence" "docker" "test_user")
+products=("prod_001" "prod_002" "prod_003" "prod_004" "prod_005" "prod_006" "prod_007")
+
+for i in {1..10000}; do
+  # Pick user and product based on loop index
+  user=${users[$(( (i-1) % ${#users[@]} ))]}
+  product=${products[$(( (i-1) % ${#products[@]} ))]}
+
+  curl -X POST http://localhost/vote/$product \
     -H "Content-Type: application/json" \
     -H "traceparent: 00-$(openssl rand -hex 16)-$(openssl rand -hex 8)-01" \
-    -d "{\"userId\": \"load_test_$i\"}" &
+    -d "{\"userId\": \"$user\"}" &
+#sleep 0.05
 done
+
+wait
 
 # Monitor traces in Jaeger to see:
 # - Request distribution across service instances
