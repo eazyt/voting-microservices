@@ -1,4 +1,19 @@
 services:
+  # Add Nginx as reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: microservices-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - gateway-service
+    networks:
+      - microservices-network
+      
   # Infrastructure Services
   mongo:
     image: mongo:4.4
@@ -42,7 +57,8 @@ services:
       - "6379:6379"
     # command: ["redis-server", "--bind", "0.0.0.0", "--protected-mode", "no"]
     # command: redis-server --requirepass votingpass123 --appendonly yes
-    command: ["redis-server", "--requirepass", "votingpass123"]
+    # command: ["redis-server", "--requirepass", "votingpass123"]
+    command: ["redis-server", "--requirepass", "votingpass123", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - redis_data:/data
     networks:
@@ -75,6 +91,15 @@ services:
       - redis
     networks:
       - microservices-network
+  
+  # Rate limiting with Redis
+  redis-rate-limit:
+    image: redis:7.2-alpine
+    container_name: microservices-redis-rate-limit
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "ratelimitpass123", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    networks:
+      - microservices-network
 
   jaeger:
     image: jaegertracing/all-in-one:latest
@@ -96,12 +121,13 @@ services:
       - jaeger_data:/tmp
     networks:
       - microservices-network
+
   # Core Services
   registry-service:
     build:
       context: ./registry
       dockerfile: Dockerfile
-    container_name: registry-service
+    container_name: microservice-registry-service
     restart: unless-stopped
     ports:
       - "4000:4000"
@@ -149,7 +175,7 @@ services:
     #   registry-service:
     #     condition: service_healthy
     deploy:
-      replicas: 1
+      replicas: 4
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -180,7 +206,7 @@ services:
     #   registry-service:
     #     condition: service_healthy
     deploy:
-      replicas: 1
+      replicas: 4
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -214,6 +240,15 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    # Resource limits for DDoS protection
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   frontend-service:
     build:
@@ -257,7 +292,7 @@ services:
     build:
       context: ./worker-service
       dockerfile: Dockerfile
-    container_name: microservice-worker-service
+    # container_name: microservice-worker-service
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -283,8 +318,8 @@ services:
     #     condition: service_healthy
     #   redis:
     #     condition: service_healthy
-    # deploy:
-    #   replicas: 1
+    deploy:
+      replicas: 4
     healthcheck:
       test: ["CMD", "ps", "aux", "|", "grep", "worker.js"]
       interval: 30s
