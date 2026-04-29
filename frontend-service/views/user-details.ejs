@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        .user-avatar-large {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 2.5rem;
+            margin: 0 auto 1rem;
+        }
+
+        .stat-card {
+            border-left: 4px solid #0d6efd;
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .vote-item {
+            border-left: 3px solid #28a745;
+            padding-left: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .vote-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .product-stat {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .product-stat:hover {
+            border-color: #0d6efd;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+    <!-- Back Button -->
+    <a href="/users" class="btn btn-primary back-button">
+        <i class="fas fa-arrow-left"></i> Back to Users
+    </a>
+
+    <div class="container py-4">
+        <!-- User Profile Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <div class="user-avatar-large">
+                            <%= (user.name || user.shortname || 'U').charAt(0).toUpperCase() %>
+                        </div>
+                        <h2 class="mb-2"><%= user.name || user.shortname || 'Unknown User' %></h2>
+                        <p class="text-muted mb-2">@<%= user.shortname || user.id || 'unknown' %></p>
+                        
+                        <% if (user.title) { %>
+                            <p class="mb-2"><i class="fas fa-briefcase text-primary"></i> <%= user.title %></p>
+                        <% } %>
+                        
+                        <% if (user.email) { %>
+                            <p class="mb-2"><i class="fas fa-envelope text-primary"></i> <%= user.email %></p>
+                        <% } %>
+                        
+                        <% if (user.department) { %>
+                            <p class="mb-2"><i class="fas fa-building text-primary"></i> <%= user.department %></p>
+                        <% } %>
+                        
+                        <% if (user.location) { %>
+                            <p class="mb-2"><i class="fas fa-map-marker-alt text-primary"></i> <%= user.location %></p>
+                        <% } %>
+
+                        <div class="mt-3">
+                            <span class="badge <%= user.isActive ? 'bg-success' : 'bg-secondary' %> fs-6">
+                                <i class="fas <%= user.isActive ? 'fa-check-circle' : 'fa-pause-circle' %>"></i>
+                                <%= user.isActive ? 'Active User' : 'Inactive User' %>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Overview -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-vote-yea fa-2x text-primary mb-2"></i>
+                        <h3 class="text-primary"><%= totalVotes %></h3>
+                        <p class="text-muted mb-0">Total Votes Cast</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-box fa-2x text-success mb-2"></i>
+                        <h3 class="text-success"><%= uniqueProducts %></h3>
+                        <p class="text-muted mb-0">Products Voted On</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-chart-line fa-2x text-info mb-2"></i>
+                        <h3 class="text-info">
+                            <%= uniqueProducts > 0 ? Math.round(totalVotes / uniqueProducts * 10) / 10 : 0 %>
+                        </h3>
+                        <p class="text-muted mb-0">Avg Votes/Product</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-calendar fa-2x text-warning mb-2"></i>
+                        <h3 class="text-warning">
+                            <% if (recentVotes.length > 0) { %>
+                                <%= Math.ceil((Date.now() - new Date(recentVotes[0].timestamp).getTime()) / (1000 * 60 * 60 * 24)) %>
+                            <% } else { %>
+                                N/A
+                            <% } %>
+                        </h3>
+                        <p class="text-muted mb-0">Days Since Last Vote</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Voting Activity Chart -->
+        <% if (voteStats.length > 0) { %>
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-chart-bar"></i> Voting Activity by Product
+                            </h5>
+                        </div>
+                        <div class="card-body" style="height: 300px;">
+                            <canvas id="voteChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <% } %>
+
+        <div class="row">
+            <!-- Product Voting Statistics -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-pie"></i> Product Voting Breakdown
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <% if (voteStats.length > 0) { %>
+                            <% voteStats.forEach((stat, index) => { %>
+                                <div class="product-stat">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>Product ID: <%= stat._id %></strong>
+                                            <div class="text-muted small">
+                                                Last voted: <%= new Date(stat.lastVote).toLocaleDateString() %>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="badge bg-primary fs-6"><%= stat.voteCount %> votes</span>
+                                            <div class="text-muted small">
+                                                <%= Math.round((stat.voteCount / totalVotes) * 100) %>% of total
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="progress mt-2" style="height: 6px;">
+                                        <div class="progress-bar" role="progressbar" 
+                                             style="width: <%= (stat.voteCount / Math.max(...voteStats.map(s => s.voteCount))) * 100 %>%">
+                                        </div>
+                                    </div>
+                                </div>
+                            <% }); %>
+                        <% } else { %>
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-info-circle fa-2x mb-2"></i>
+                                <p>No voting activity found for this user.</p>
+                            </div>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Voting History -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-history"></i> Recent Voting History
+                        </h5>
+                    </div>
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                        <% if (recentVotes.length > 0) { %>
+                            <% recentVotes.slice(0, 20).forEach((vote, index) => { %>
+                                <div class="vote-item">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <strong>Product: <%= vote.productId %></strong>
+                                            <div class="text-muted small">
+                                                <i class="fas fa-clock"></i>
+                                                <%= new Date(vote.timestamp).toLocaleString() %>
+                                            </div>
+                                        </div>
+                                        <span class="badge bg-success">Vote #<%= index + 1 %></span>
+                                    </div>
+                                </div>
+                            <% }); %>
+                            
+                            <% if (recentVotes.length > 20) { %>
+                                <div class="text-center mt-3">
+                                    <small class="text-muted">
+                                        Showing 20 most recent votes out of <%= recentVotes.length %> total
+                                    </small>
+                                </div>
+                            <% } %>
+                        <% } else { %>
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-vote-yea fa-2x mb-2"></i>
+                                <p>No votes recorded yet.</p>
+                                <a href="/" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-arrow-right"></i> Start Voting
+                                </a>
+                            </div>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Summary -->
+        <% if (user.summary) { %>
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-user"></i> User Summary
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-0"><%= user.summary %></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <% } %>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <% if (voteStats.length > 0) { %>
+        <script>
+            // Initialize voting activity chart
+            document.addEventListener('DOMContentLoaded', function() {
+                const ctx = document.getElementById('voteChart').getContext('2d');
+                const voteStats = <%- JSON.stringify(voteStats) %>;
+                
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: voteStats.map(stat => `Product ${stat._id}`),
+                        datasets: [{
+                            data: voteStats.map(stat => stat.voteCount),
+                            backgroundColor: [
+                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+                                '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+                            ],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Vote Distribution by Product'
+                            }
+                        }
+                    }
+                });
+            });
+        </script>
+    <% } %>
+</body>
+
+</html>
