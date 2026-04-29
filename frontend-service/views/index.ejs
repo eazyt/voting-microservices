@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .vote-card {
+            transition: transform 0.2s;
+            border: 1px solid #dee2e6;
+        }
+        .vote-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .vote-btn {
+            transition: all 0.3s;
+        }
+        .vote-btn:hover {
+            transform: scale(1.05);
+        }
+        .stats-badge {
+            font-size: 0.9rem;
+        }
+        .pending-votes {
+            color: #fd7e14;
+        }
+        .persisted-votes {
+            color: #198754;
+        }
+        .total-votes {
+            color: #0d6efd;
+            font-weight: bold;
+        }
+        .refresh-stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .navigation-tabs {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1 class="text-center mb-3">
+                    <i class="fas fa-vote-yea text-primary"></i>
+                    Product Voting System
+                </h1>
+                
+                <!-- Navigation Tabs -->
+                <div class="navigation-tabs mb-3">
+                    <ul class="nav nav-pills justify-content-center">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="/">
+                                <i class="fas fa-vote-yea"></i> Products & Voting
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/users">
+                                <i class="fas fa-users"></i> Users
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/register">
+                                <i class="fas fa-user-plus"></i> Register
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link btn btn-link" onclick="showAdminLoginModal()" id="adminNavBtn">
+                                <i class="fas fa-shield-alt"></i> Admin
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                
+                <!-- User Authentication Status -->
+                <div id="userStatus" class="alert alert-warning text-center mb-3" style="display: none;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Authentication Required:</strong> You must be logged in to vote on products.
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-primary me-2" onclick="showLoginModal()">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </button>
+                        <a href="/register" class="btn btn-sm btn-success">
+                            <i class="fas fa-user-plus"></i> Register
+                        </a>
+                    </div>
+                </div>
+                
+                <div id="userWelcome" class="alert alert-success text-center mb-3" style="display: none;">
+                    <i class="fas fa-user-check"></i>
+                    Welcome back, <strong id="userName"></strong>! You can now vote on products.
+                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+                
+                <div class="alert alert-info text-center">
+                    <i class="fas fa-info-circle"></i>
+                    Vote for your favorite products! Votes are queued in Redis and processed by worker nodes.
+                    <br>
+                    <small class="text-muted">
+                        <span class="pending-votes">Orange numbers</span> = Pending votes in Redis queue | 
+                        <span class="persisted-votes">Green numbers</span> = Processed votes in MongoDB
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Products</h5>
+                        <h2 class="text-primary"><%= products.length %></h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Pending Votes</h5>
+                        <h2 class="pending-votes" id="totalPending"><%= totalPending %></h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Votes Cast</h5>
+                        <h2 class="total-votes" id="totalVotes">
+                            <%= products.reduce((sum, p) => sum + p.totalVotes, 0) %>
+                        </h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sorting and Visualization Controls -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-4">
+                                <label for="sortProducts" class="form-label">
+                                    <i class="fas fa-sort"></i> Sort Products By:
+                                </label>
+                                <select class="form-select" id="sortProducts" onchange="sortProducts()">
+                                    <option value="votes-desc">Most Votes First</option>
+                                    <option value="votes-asc">Least Votes First</option>
+                                    <option value="name-asc">Name (A-Z)</option>
+                                    <option value="name-desc">Name (Z-A)</option>
+                                    <option value="price-asc">Price (Low to High)</option>
+                                    <option value="price-desc">Price (High to Low)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">
+                                    <i class="fas fa-chart-bar"></i> Visualization:
+                                </label>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="viewMode" id="gridView" checked onchange="toggleView('grid')">
+                                    <label class="btn btn-outline-primary" for="gridView">
+                                        <i class="fas fa-th"></i> Grid
+                                    </label>
+                                    <input type="radio" class="btn-check" name="viewMode" id="chartView" onchange="toggleView('chart')">
+                                    <label class="btn btn-outline-primary" for="chartView">
+                                        <i class="fas fa-chart-bar"></i> Chart
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">
+                                    <i class="fas fa-filter"></i> Filter:
+                                </label>
+                                <input type="text" class="form-control" id="filterProducts" placeholder="Search products..." onkeyup="filterProducts()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart View Container -->
+        <div id="chartContainer" class="row mb-4" style="display: none;">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar"></i> Product Votes Visualization
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="productChart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Products Grid -->
+        <div id="productsGridContainer" class="row">
+            <% products.forEach((product, index) => { %>
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="card vote-card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><%= product.name %></h5>
+                        <% if (index < 3) { %>
+                            <span class="badge bg-warning">
+                                <i class="fas fa-trophy"></i> #<%= index + 1 %>
+                            </span>
+                        <% } %>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-2">
+                            <i class="fas fa-tag"></i> <%= product.category %>
+                        </p>
+                        <p class="card-text"><%= product.description %></p>
+                        <p class="text-success fw-bold mb-3">
+                            <i class="fas fa-dollar-sign"></i> $<%= product.price %>
+                        </p>
+                        
+                        <!-- Vote Statistics -->
+                        <div class="row text-center mb-3">
+                            <div class="col-4">
+                                <div class="stats-badge">
+                                    <div class="persisted-votes fw-bold"><%= product.voteCount %></div>
+                                    <small class="text-muted">Saved</small>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="stats-badge">
+                                    <div class="pending-votes fw-bold"><%= product.pendingVotes %></div>
+                                    <small class="text-muted">Pending</small>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="stats-badge">
+                                    <div class="total-votes fw-bold"><%= product.totalVotes %></div>
+                                    <small class="text-muted">Total</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-primary vote-btn w-100" 
+                                onclick="vote('<%= product.id %>', '<%= product.name %>')">
+                            <i class="fas fa-thumbs-up"></i> Vote for this Product
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+        <% if (products.length === 0) { %>
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-warning text-center">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    No products available for voting.
+                </div>
+            </div>
+        </div>
+        <% } %>
+    </div>
+
+    <!-- Refresh Button -->
+    <button class="btn btn-outline-primary refresh-stats" onclick="refreshPage()" title="Refresh Stats">
+        <i class="fas fa-sync-alt"></i>
+    </button>
+
+    <!-- Login Modal -->
+    <div class="modal fade" id="loginModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-sign-in-alt"></i> User Login
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="loginForm">
+                        <div class="mb-3">
+                            <label for="loginIdentifier" class="form-label">Email or Username</label>
+                            <input type="text" class="form-control" id="loginIdentifier" name="identifier" required>
+                            <div class="form-text">Enter your email address or username</div>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-sign-in-alt"></i> Login
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Login Modal -->
+    <div class="modal fade" id="adminLoginModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-gradient" style="background: linear-gradient(135deg, #dc3545 0%, #6f42c1 100%); color: white;">
+                    <h5 class="modal-title">
+                        <i class="fas fa-shield-alt"></i> Admin Login
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="adminLoginAlert" class="alert d-none"></div>
+                    
+                    <!-- Admin Status Display -->
+                    <div id="adminStatusSection" class="d-none">
+                        <div class="alert alert-success">
+                            <i class="fas fa-user-shield"></i>
+                            Welcome, <strong id="adminDisplayName"></strong>!
+                            <div class="mt-2">
+                                <small class="text-muted">Admin permissions: Product Management</small>
+                            </div>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <a href="/admin" class="btn btn-primary">
+                                <i class="fas fa-tachometer-alt"></i> Open Admin Panel
+                            </a>
+                            <button type="button" class="btn btn-outline-secondary" onclick="adminLogout()">
+                                <i class="fas fa-sign-out-alt"></i> Admin Logout
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Admin Login Form -->
+                    <div id="adminLoginFormSection">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Admin Access:</strong> Login to manage products in the system.
+                            <br><small>Default admin shortname: <code>admin</code></small>
+                        </div>
+                        
+                        <form id="adminLoginForm">
+                            <div class="mb-3">
+                                <label for="adminIdentifier" class="form-label">Admin Email or Shortname</label>
+                                <input type="text" class="form-control" id="adminIdentifier" name="identifier" 
+                                       placeholder="admin" required>
+                                <div class="form-text">Enter admin email or shortname</div>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-danger">
+                                    <i class="fas fa-sign-in-alt"></i> Admin Login
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <hr>
+                        <div class="text-center">
+                            <small class="text-muted">
+                                <i class="fas fa-lock"></i> Admin access required for product management
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="voteToast" class="toast" role="alert">
+            <div class="toast-header">
+                <i class="fas fa-vote-yea text-primary me-2"></i>
+                <strong class="me-auto">Vote Status</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toastMessage">
+                <!-- Message will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global user state
+        let currentUser = null;
+        let productsData = <%- JSON.stringify(products) %>;
+        let originalProductsData = [...productsData];
+        let productChart = null;
+
+        // Check user authentication status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuthStatus();
+            initializeChart();
+            // Initialize with current data
+            updateChart(productsData);
+        });
+
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/api/auth-status');
+                const result = await response.json();
+                
+                if (result.authenticated) {
+                    currentUser = result.user;
+                    showUserWelcome(result.user);
+                } else {
+                    showAuthRequired();
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+                showAuthRequired();
+            }
+            
+            // Also check admin status
+            checkAdminStatus();
+        }
+
+        async function checkAdminStatus() {
+            try {
+                const response = await fetch('/api/admin-status');
+                const result = await response.json();
+                
+                if (result.authenticated) {
+                    updateAdminNavButton(result.admin);
+                } else {
+                    updateAdminNavButton(null);
+                }
+            } catch (error) {
+                console.error('Admin status check error:', error);
+                updateAdminNavButton(null);
+            }
+        }
+
+        function updateAdminNavButton(admin) {
+            const adminNavBtn = document.getElementById('adminNavBtn');
+            if (admin) {
+                adminNavBtn.innerHTML = '<i class="fas fa-shield-alt text-success"></i> Admin Panel';
+                adminNavBtn.classList.add('text-success');
+                adminNavBtn.title = `Logged in as ${admin.name}`;
+            } else {
+                adminNavBtn.innerHTML = '<i class="fas fa-shield-alt"></i> Admin';
+                adminNavBtn.classList.remove('text-success');
+                adminNavBtn.title = 'Admin Login';
+            }
+        }
+
+        function showUserWelcome(user) {
+            document.getElementById('userStatus').style.display = 'none';
+            document.getElementById('userWelcome').style.display = 'block';
+            document.getElementById('userName').textContent = user.name || user.shortname;
+        }
+
+        function showAuthRequired() {
+            document.getElementById('userWelcome').style.display = 'none';
+            document.getElementById('userStatus').style.display = 'block';
+        }
+
+        // Admin Functions
+        function showAdminLoginModal() {
+            const modal = new bootstrap.Modal(document.getElementById('adminLoginModal'));
+            
+            // Check current admin status and show appropriate section
+            fetch('/api/admin-status')
+                .then(response => response.json())
+                .then(result => {
+                    if (result.authenticated) {
+                        showAdminStatus(result.admin);
+                    } else {
+                        showAdminLoginForm();
+                    }
+                    modal.show();
+                })
+                .catch(error => {
+                    console.error('Admin status check error:', error);
+                    showAdminLoginForm();
+                    modal.show();
+                });
+        }
+
+        function showAdminStatus(admin) {
+            document.getElementById('adminStatusSection').classList.remove('d-none');
+            document.getElementById('adminLoginFormSection').classList.add('d-none');
+            document.getElementById('adminDisplayName').textContent = admin.name;
+        }
+
+        function showAdminLoginForm() {
+            document.getElementById('adminStatusSection').classList.add('d-none');
+            document.getElementById('adminLoginFormSection').classList.remove('d-none');
+        }
+
+        // Admin Login Form Handler
+        document.getElementById('adminLoginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const loginData = Object.fromEntries(formData.entries());
+            
+            if (!loginData.identifier) {
+                showAdminAlert('Please enter admin email or shortname', 'danger');
+                return;
+            }
+            
+            try {
+                const submitButton = this.querySelector('button[type="submit"]');
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
+                
+                const response = await fetch('/admin/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(loginData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAdminAlert('Admin login successful!', 'success');
+                    setTimeout(() => {
+                        showAdminStatus(result.admin);
+                        updateAdminNavButton(result.admin);
+                        this.reset();
+                    }, 1000);
+                } else {
+                    showAdminAlert(result.error || 'Admin login failed', 'danger');
+                }
+            } catch (error) {
+                console.error('Admin login error:', error);
+                showAdminAlert('Network error. Please try again.', 'danger');
+            } finally {
+                const submitButton = this.querySelector('button[type="submit"]');
+                submitButton.disabled = false;
+                submitButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Admin Login';
+            }
+        });
+
+        async function adminLogout() {
+            try {
+                const response = await fetch('/admin/logout', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAdminAlert('Admin logged out successfully', 'success');
+                    setTimeout(() => {
+                        showAdminLoginForm();
+                        updateAdminNavButton(null);
+                    }, 1000);
+                } else {
+                    showAdminAlert('Logout failed', 'danger');
+                }
+            } catch (error) {
+                console.error('Admin logout error:', error);
+                showAdminAlert('Network error during logout', 'danger');
+            }
+        }
+
+        function showAdminAlert(message, type) {
+            const alertElement = document.getElementById('adminLoginAlert');
+            alertElement.className = `alert alert-${type}`;
+            alertElement.textContent = message;
+            alertElement.classList.remove('d-none');
+            
+            setTimeout(() => {
+                alertElement.classList.add('d-none');
+            }, 5000);
+        }
+
+        // Product Sorting Function
+        function sortProducts() {
+            const sortBy = document.getElementById('sortProducts').value;
+            const productCards = document.querySelectorAll('.vote-card').length > 0 ? 
+                Array.from(document.querySelectorAll('.vote-card')).map(card => card.closest('.col-lg-4')) : [];
+            
+            if (productCards.length === 0) return;
+
+            // Sort the products data
+            let sortedProducts = [...productsData];
+            
+            switch(sortBy) {
+                case 'votes-desc':
+                    sortedProducts.sort((a, b) => b.totalVotes - a.totalVotes);
+                    break;
+                case 'votes-asc':
+                    sortedProducts.sort((a, b) => a.totalVotes - b.totalVotes);
+                    break;
+                case 'name-asc':
+                    sortedProducts.sort((a, b) => a.name.localeCompare(b.name));
+                    break;
+                case 'name-desc':
+                    sortedProducts.sort((a, b) => b.name.localeCompare(a.name));
+                    break;
+                case 'price-asc':
+                    sortedProducts.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+                    break;
+                case 'price-desc':
+                    sortedProducts.sort((a, b) => parseFloat(b.price) - parseFloat(a.price));
+                    break;
+            }
+
+            // Re-render the product grid
+            renderProductGrid(sortedProducts);
+            
+            // Update chart if visible
+            if (document.getElementById('chartContainer').style.display !== 'none') {
+                updateChart(sortedProducts);
+            }
+        }
+
+        // Product Filtering Function
+        function filterProducts() {
+            const filterText = document.getElementById('filterProducts').value.toLowerCase();
+            let filteredProducts = originalProductsData;
+            
+            if (filterText) {
+                filteredProducts = originalProductsData.filter(product => 
+                    product.name.toLowerCase().includes(filterText) ||
+                    product.category.toLowerCase().includes(filterText) ||
+                    product.description.toLowerCase().includes(filterText)
+                );
+            }
+            
+            productsData = filteredProducts;
+            sortProducts(); // Apply current sorting to filtered results
+        }
+
+        // View Toggle Function
+        function toggleView(viewType) {
+            const gridContainer = document.getElementById('productsGridContainer');
+            const chartContainer = document.getElementById('chartContainer');
+            
+            if (viewType === 'grid') {
+                gridContainer.style.display = 'block';
+                chartContainer.style.display = 'none';
+            } else if (viewType === 'chart') {
+                gridContainer.style.display = 'none';
+                chartContainer.style.display = 'block';
+                updateChart(productsData);
+            }
+        }
+
+        // Initialize Chart
+        function initializeChart() {
+            const ctx = document.getElementById('productChart').getContext('2d');
+            
+            productChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Total Votes',
+                        data: [],
+                        backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }, {
+                        label: 'Pending Votes',
+                        data: [],
+                        backgroundColor: 'rgba(255, 206, 86, 0.8)',
+                        borderColor: 'rgba(255, 206, 86, 1)',
+                        borderWidth: 1
+                    }, {
+                        label: 'Processed Votes',
+                        data: [],
+                        backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Product Voting Statistics'
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const product = productsData[index];
+                            if (product) {
+                                vote(product.id, product.name);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update Chart Data
+        function updateChart(products) {
+            if (!productChart) return;
+            
+            const sortedProducts = products.slice(0, 10); // Show top 10 products
+            
+            productChart.data.labels = sortedProducts.map(p => p.name.length > 15 ? p.name.substring(0, 15) + '...' : p.name);
+            productChart.data.datasets[0].data = sortedProducts.map(p => p.totalVotes);
+            productChart.data.datasets[1].data = sortedProducts.map(p => p.pendingVotes);
+            productChart.data.datasets[2].data = sortedProducts.map(p => p.voteCount);
+            
+            productChart.update();
+        }
+
+        // Render Product Grid
+        function renderProductGrid(products) {
+            const container = document.getElementById('productsGridContainer');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            if (products.length === 0) {
+                container.innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-warning text-center">
+                            <i class="fas fa-search"></i>
+                            No products match your search criteria.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            products.forEach((product, index) => {
+                const productCard = `
+                    <div class="col-lg-4 col-md-6 mb-4">
+                        <div class="card vote-card h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">${product.name}</h5>
+                                ${index < 3 ? `
+                                    <span class="badge bg-warning">
+                                        <i class="fas fa-trophy"></i> #${index + 1}
+                                    </span>
+                                ` : ''}
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted mb-2">
+                                    <i class="fas fa-tag"></i> ${product.category}
+                                </p>
+                                <p class="card-text">${product.description}</p>
+                                <p class="text-success fw-bold mb-3">
+                                    <i class="fas fa-dollar-sign"></i> $${product.price}
+                                </p>
+                                
+                                <!-- Vote Statistics -->
+                                <div class="row text-center mb-3">
+                                    <div class="col-4">
+                                        <div class="stats-badge">
+                                            <div class="persisted-votes fw-bold">${product.voteCount}</div>
+                                            <small class="text-muted">Saved</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="stats-badge">
+                                            <div class="pending-votes fw-bold">${product.pendingVotes}</div>
+                                            <small class="text-muted">Pending</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="stats-badge">
+                                            <div class="total-votes fw-bold">${product.totalVotes}</div>
+                                            <small class="text-muted">Total</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-primary vote-btn w-100" 
+                                        onclick="vote('${product.id}', '${product.name}')">
+                                    <i class="fas fa-thumbs-up"></i> Vote for this Product
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += productCard;
+            });
+        }
+
+        async function vote(productId, productName) {
+            // Check if user is authenticated
+            if (!currentUser) {
+                showToast('Please login or register to vote on products', 'error');
+                showLoginModal();
+                return;
+            }
+
+            try {
+                const response = await fetch(`/vote/${productId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId: currentUser.shortname || currentUser.id
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(`Vote submitted for "${productName}"! Processing in queue...`, 'success');
+                    // Refresh stats after a short delay
+                    setTimeout(refreshStats, 1000);
+                } else {
+                    if (result.error && result.error.includes('Invalid or inactive user')) {
+                        showToast('Your account is inactive. Please contact administrator.', 'error');
+                        logout();
+                    } else {
+                        showToast(`Failed to vote: ${result.error || result.message}`, 'error');
+                    }
+                }
+            } catch (error) {
+                console.error('Vote error:', error);
+                showToast('Network error. Please try again.', 'error');
+            }
+        }
+
+        // Login Form Handler
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const loginData = Object.fromEntries(formData.entries());
+            
+            if (!loginData.identifier) {
+                showToast('Please enter your email or username', 'error');
+                return;
+            }
+            
+            try {
+                const submitButton = this.querySelector('button[type="submit"]');
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
+                
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(loginData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentUser = result.user;
+                    showUserWelcome(result.user);
+                    showToast('Login successful!', 'success');
+                    
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
+                    modal.hide();
+                    
+                    // Reset form
+                    this.reset();
+                } else {
+                    showToast(result.error || 'Login failed', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                showToast('Network error. Please try again.', 'error');
+            } finally {
+                const submitButton = this.querySelector('button[type="submit"]');
+                submitButton.disabled = false;
+                submitButton.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
+            }
+        });
+
+        async function logout() {
+            try {
+                const response = await fetch('/logout', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentUser = null;
+                    showAuthRequired();
+                    showToast('Logged out successfully', 'success');
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Still clear local state even if server request fails
+                currentUser = null;
+                showAuthRequired();
+            }
+        }
+
+        function showLoginModal() {
+            const modal = new bootstrap.Modal(document.getElementById('loginModal'));
+            modal.show();
+        }
+
+        function showToast(message, type) {
+            const toastElement = document.getElementById('voteToast');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            toastMessage.textContent = message;
+            
+            // Update toast styling based on type
+            toastElement.className = `toast ${type === 'success' ? 'bg-success text-white' : 'bg-danger text-white'}`;
+            
+            const toast = new bootstrap.Toast(toastElement);
+            toast.show();
+        }
+
+        async function refreshStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                
+                document.getElementById('totalPending').textContent = stats.pendingVotes;
+                document.getElementById('totalVotes').textContent = stats.totalVotes + stats.pendingVotes;
+            } catch (error) {
+                console.error('Error refreshing stats:', error);
+            }
+        }
+
+        function refreshPage() {
+            window.location.reload();
+        }
+
+        // Auto-refresh stats every 5 seconds
+        setInterval(refreshStats, 5000);
+    </script>
+</body>
+</html>

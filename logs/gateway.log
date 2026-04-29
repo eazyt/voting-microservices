@@ -1,0 +1,34 @@
+
+> gateway-service@1.0.0 start
+> node bin/run
+
+🔍 OpenTelemetry tracing initialized for service: gateway-service
+📊 Jaeger endpoint: http://localhost:14268/api/traces
+📈 Prometheus metrics port: 9090
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EACCES: permission denied 0.0.0.0:80
+    at Server.setupListenHandle [as _listen2] (node:net:1926:21)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at Object.<anonymous> (/home/eazyt/vote/working-services/gateway-service/bin/run:17:8)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+Emitted 'error' event on Server instance at:
+    at Server.incomingRequest (/home/eazyt/vote/working-services/gateway-service/node_modules/@opentelemetry/instrumentation-http/build/src/http.js:283:33)
+    at emitErrorNT (node:net:1984:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EACCES',
+  errno: -13,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 80
+}
+
+Node.js v24.14.0

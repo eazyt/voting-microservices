@@ -1,0 +1,24 @@
+
+> product-service@1.0.0 start
+> node bin/run
+
+🔍 OpenTelemetry tracing initialized for service: product-service
+📊 Jaeger endpoint: http://localhost:14268/api/traces
+📈 Prometheus metrics port: 9090
+/home/eazyt/vote/working-services/product-service/node_modules/pino/lib/transport.js:282
+      throw new Error(`unable to determine transport target for "${origin}"`)
+      ^
+
+Error: unable to determine transport target for "pino-pretty"
+    at fixTarget (/home/eazyt/vote/working-services/product-service/node_modules/pino/lib/transport.js:282:13)
+    at transport (/home/eazyt/vote/working-services/product-service/node_modules/pino/lib/transport.js:252:22)
+    at normalizeArgs (/home/eazyt/vote/working-services/product-service/node_modules/pino/lib/tools.js:349:16)
+    at pino (/home/eazyt/vote/working-services/product-service/node_modules/pino/pino.js:91:28)
+    at getLogger (/home/eazyt/vote/working-services/product-service/config/index.js:12:3)
+    at Object.log (/home/eazyt/vote/working-services/product-service/config/index.js:41:16)
+    at Object.<anonymous> (/home/eazyt/vote/working-services/product-service/bin/run:11:20)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+
+Node.js v24.14.0

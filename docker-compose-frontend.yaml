@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services frontend
+  frontend-service:
+    build:
+      context: ./frontend-service
+      dockerfile: Dockerfile
+    container_name: microservice-frontend-service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      SERVICE_NAME: frontend-service
+      SERVICE_VERSION: 1.0.0
+      MONGODB_URL: mongodb://root:example@mongo:27017
+      MONGODB_DB: productservice
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: votingpass123
+      GATEWAY_URL: http://gatewa-service:8080
+      # JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      # ENABLE_CONSOLE_TRACING: "false"
+      # ENABLE_JAEGER_TRACING: "true"
+      # PROMETHEUS_PORT: 9096
+    # networks:
+    #   - microservices-network
+    # depends_on:
+    #   mongodb:
+    #     condition: service_healthy
+      # redis:
+      #   condition: service_healthy
+      # gateway-service:
+      #   condition: service_healthy
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:3000/api/stats"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3

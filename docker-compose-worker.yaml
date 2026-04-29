@@ -1,0 +1,271 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  # mongodb:
+  #   image: mongo:4.4
+  #   container_name: microservices-mongodb
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: root
+  #     MONGO_INITDB_ROOT_PASSWORD: example
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #     - ./mongo-init:/docker-entrypoint-initdb.d
+  #   networks:
+  #     - microservices-network
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # redis:
+  #   image: redis:7.2-alpine
+  #   container_name: microservices-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   command: redis-server --requirepass votingpass123 --appendonly yes
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - microservices-network
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "-a", "votingpass123", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # jaeger:
+  #   image: jaegertracing/all-in-one:1.50
+  #   container_name: microservices-jaeger
+  #   restart: unless-stopped
+  #   ports:
+  #     - "16686:16686"  # Jaeger UI
+  #     - "14268:14268"  # Jaeger collector HTTP
+  #     - "14250:14250"  # Jaeger collector gRPC
+  #   environment:
+  #     COLLECTOR_OTLP_ENABLED: true
+  #   networks:
+  #     - microservices-network
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:16686/"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # # Core Services
+  # registry-service:
+  #   build:
+  #     context: ./registry
+  #     dockerfile: Dockerfile
+  #   container_name: registry-service
+  #   restart: unless-stopped
+  #   ports:
+  #     - "4000:4000"
+  #   environment:
+  #     NODE_ENV: production
+  #     SERVICE_NAME: registry-service
+  #     SERVICE_VERSION: 1.0.0
+  #     JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+  #     ENABLE_CONSOLE_TRACING: "false"
+  #     ENABLE_JAEGER_TRACING: "true"
+  #     PROMETHEUS_PORT: 9091
+  #   networks:
+  #     - microservices-network
+  #   depends_on:
+  #     jaeger:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # users-service:
+  #   build:
+  #     context: ./users-service
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: production
+  #     SERVICE_NAME: users-service
+  #     SERVICE_VERSION: 1.0.0
+  #     MONGODB_URL: mongodb://admin:password123@mongodb:27017/userservice?authSource=admin
+  #     MONGODB_DB: userservice
+  #     REGISTRY_URL: http://registry-service:4000
+  #     JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+  #     ENABLE_CONSOLE_TRACING: "false"
+  #     ENABLE_JAEGER_TRACING: "true"
+  #     PROMETHEUS_PORT: 9092
+  #   networks:
+  #     - microservices-network
+  #   depends_on:
+  #     mongodb:
+  #       condition: service_healthy
+  #     registry-service:
+  #       condition: service_healthy
+  #   deploy:
+  #     replicas: 2
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # product-service:
+  #   build:
+  #     context: ./product-service
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: production
+  #     SERVICE_NAME: product-service
+  #     SERVICE_VERSION: 1.0.0
+  #     MONGODB_URL: mongodb://root:example@mongodb:27017/productservice?authSource=admin
+  #     MONGODB_DB: productservice
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     REDIS_USERNAME: default
+  #     REDIS_PASSWORD: votingpass123
+  #     REGISTRY_URL: http://registry-service:4000
+  #     JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+  #     ENABLE_CONSOLE_TRACING: "false"
+  #     ENABLE_JAEGER_TRACING: "true"
+  #     PROMETHEUS_PORT: 9093
+  #   networks:
+  #     - microservices-network
+  #   depends_on:
+  #     mongodb:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     registry-service:
+  #       condition: service_healthy
+  #   deploy:
+  #     replicas: 2
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # gateway-service:
+  #   build:
+  #     context: ./gateway-service
+  #     dockerfile: Dockerfile
+  #   container_name: gateway-service
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     NODE_ENV: production
+  #     SERVICE_NAME: gateway-service
+  #     SERVICE_VERSION: 1.0.0
+  #     REGISTRY_URL: http://registry-service:4000
+  #     JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+  #     ENABLE_CONSOLE_TRACING: "false"
+  #     ENABLE_JAEGER_TRACING: "true"
+  #     PROMETHEUS_PORT: 9094
+  #   networks:
+  #     - microservices-network
+  #   depends_on:
+  #     registry-service:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  worker-service:
+    build:
+      context: ./worker-service
+      dockerfile: Dockerfile
+    container_name: microservice-worker-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      SERVICE_NAME: worker-service
+      SERVICE_VERSION: 1.0.0
+      MONGODB_URL: mongodb://root:example@mongo:27017
+      MONGODB_DB: productservice
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: votingpass123
+      BATCH_SIZE: 10
+      POLL_INTERVAL: 1000
+      MAX_RETRIES: 3
+      # JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      # ENABLE_CONSOLE_TRACING: "false"
+      # ENABLE_JAEGER_TRACING: "true"
+      # PROMETHEUS_PORT: 9095
+    networks:
+      - microservices-network
+    # depends_on:
+    #   mongodb:
+    #     condition: service_healthy
+    #   redis:
+    #     condition: service_healthy
+    deploy:
+      replicas: 2
+    # healthcheck:
+    #   test: ["CMD", "ps", "aux", "|", "grep", "worker.js"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+
+  # frontend-service:
+  #   build:
+  #     context: ./frontend-service
+  #     dockerfile: Dockerfile
+  #   container_name: frontend-service
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NODE_ENV: production
+  #     SERVICE_NAME: frontend-service
+  #     SERVICE_VERSION: 1.0.0
+  #     MONGODB_URL: mongodb://admin:password123@mongodb:27017/productservice?authSource=admin
+  #     MONGODB_DB: productservice
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     REDIS_USERNAME: default
+  #     REDIS_PASSWORD: votingpass123
+  #     GATEWAY_URL: http://gateway-service
+  #     JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+  #     ENABLE_CONSOLE_TRACING: "false"
+  #     ENABLE_JAEGER_TRACING: "true"
+  #     PROMETHEUS_PORT: 9096
+  #   networks:
+  #     - microservices-network
+  #   depends_on:
+  #     mongodb:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     gateway-service:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000/api/stats"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+networks:
+  microservices-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
